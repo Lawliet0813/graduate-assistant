@@ -126,11 +126,13 @@ async def login(
         if not base_url:
             raise HTTPException(status_code=400, detail="Moodle base URL is required")
 
+        # 政大 Moodle 未啟用 Web Services API，使用 Selenium
         service = MoodleService(
             base_url=base_url,
             username=request.username,
             password=request.password,
-            headless=True
+            headless=True,
+            use_api=False  # 政大不支援 API，使用 Selenium
         )
 
         result = service.login()
@@ -159,11 +161,13 @@ async def get_courses(
                 detail="Moodle credentials not configured in environment"
             )
 
+        # 政大 Moodle 未啟用 Web Services API，使用 Selenium
         service = MoodleService(
             base_url=base_url,
             username=username,
             password=password,
-            headless=True
+            headless=True,
+            use_api=False  # 政大不支援 API，使用 Selenium
         )
 
         courses = service.get_courses()
@@ -193,11 +197,13 @@ async def get_course_detail(
                 detail="Moodle credentials not configured in environment"
             )
 
+        # 政大 Moodle 未啟用 Web Services API，使用 Selenium
         service = MoodleService(
             base_url=base_url,
             username=username,
             password=password,
-            headless=True
+            headless=True,
+            use_api=False  # 政大不支援 API，使用 Selenium
         )
 
         course = service.get_course_detail(course_id)
@@ -233,11 +239,13 @@ async def get_assignments(
                 detail="Moodle credentials not configured in environment"
             )
 
+        # 政大 Moodle 未啟用 Web Services API，使用 Selenium
         service = MoodleService(
             base_url=base_url,
             username=username,
             password=password,
-            headless=True
+            headless=True,
+            use_api=False  # 政大不支援 API，使用 Selenium
         )
 
         assignments = service.get_assignments(course_id=course_id)
@@ -262,11 +270,13 @@ async def sync_moodle_data(
         if not base_url:
             raise HTTPException(status_code=400, detail="Moodle base URL is required")
 
+        # 政大 Moodle 未啟用 Web Services API，使用 Selenium
         service = MoodleService(
             base_url=base_url,
             username=request.username,
             password=request.password,
-            headless=True
+            headless=True,
+            use_api=False  # 政大不支援 API，使用 Selenium
         )
 
         result = service.sync_all()
