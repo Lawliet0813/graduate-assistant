@@ -122,6 +122,12 @@ class MoodleScraper:
             try:
                 # 擴展搜尋範圍，包含 INCCU 相關的按鈕和連結
                 sso_selectors = [
+                    # 政大師生登入按鈕（最優先）
+                    "//a[contains(text(), '政大師生登入')]",
+                    "//button[contains(text(), '政大師生登入')]",
+                    "//a[contains(., '政大師生')]",
+                    "//button[contains(., '政大師生')]",
+                    "//input[@value='政大師生登入']",
                     # INCCU 單一登入相關
                     "//a[contains(@href, 'inccu')]",
                     "//a[contains(text(), 'INCCU')]",
@@ -140,7 +146,8 @@ class MoodleScraper:
                     try:
                         sso_buttons = self.driver.find_elements(By.XPATH, selector)
                         if sso_buttons:
-                            print(f"→ 找到 SSO/INCCU 登入按鈕")
+                            button_text = sso_buttons[0].text or sso_buttons[0].get_attribute('value') or 'SSO'
+                            print(f"→ 找到登入按鈕: {button_text}")
                             sso_buttons[0].click()
                             sso_button_found = True
                             print("→ 等待跳轉到 INCCU 登入頁面...")
@@ -155,7 +162,7 @@ class MoodleScraper:
                         continue
 
                 if sso_button_found:
-                    print("  ℹ 注意: 使用 INCCU 單一登入，請使用您的政大帳號密碼")
+                    print("  ℹ 使用政大 INCCU 單一登入，請使用您的政大帳號密碼")
             except Exception as e:
                 print(f"→ 尋找 SSO 按鈕時發生錯誤: {e}")
             
