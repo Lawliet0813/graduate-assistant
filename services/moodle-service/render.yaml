@@ -1,0 +1,29 @@
+services:
+  # Moodle Integration Service
+  - type: web
+    name: moodle-service
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: singapore
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: HOST
+        value: 0.0.0.0
+      - key: API_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: MOODLE_BASE_URL
+        value: https://moodle45.nccu.edu.tw
+      - key: MOODLE_USERNAME
+        sync: false
+      - key: MOODLE_PASSWORD
+        sync: false
+    buildFilter:
+      paths:
+        - services/moodle-service/**
+    autoDeploy: true
