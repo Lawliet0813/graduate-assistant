@@ -40,7 +40,7 @@ export class VoiceMemosWatcher {
     // Verify directory exists
     try {
       await fs.access(this.config.watchPath)
-    } catch (error) {
+    } catch {
       throw new Error(
         `iCloud Voice Memos directory not found: ${this.config.watchPath}\n` +
           `Please ensure:\n` +

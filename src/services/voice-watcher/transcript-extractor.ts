@@ -94,7 +94,7 @@ export class TranscriptExtractor {
     }
 
     // Remove any binary prefixes or encoding markers
-    let cleaned = userComment
+    const cleaned = userComment
       .replace(/^(ASCII|Unicode|Binary)\s*/i, '')
       .replace(/\0/g, '')
       .trim()

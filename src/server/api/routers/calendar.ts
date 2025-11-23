@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { GoogleCalendarService } from '~/server/services/google-calendar-service'
+import { GoogleCalendarService, type CalendarEvent } from '~/server/services/google-calendar-service'
+
+const handleCalendarError = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    throw new Error(error.message || fallback)
+  }
+  throw new Error(fallback)
+}
 
 export const calendarRouter = createTRPCRouter({
   /**
@@ -25,8 +32,8 @@ export const calendarRouter = createTRPCRouter({
         })
 
         return events
-      } catch (error: any) {
-        throw new Error(error.message || '無法取得行事曆事件')
+      } catch (error) {
+        handleCalendarError(error, '無法取得行事曆事件')
       }
     }),
 
@@ -44,8 +51,8 @@ export const calendarRouter = createTRPCRouter({
 
       try {
         return await calendarService.getEvent(input.eventId)
-      } catch (error: any) {
-        throw new Error(error.message || '無法取得事件詳情')
+      } catch (error) {
+        handleCalendarError(error, '無法取得事件詳情')
       }
     }),
 
@@ -94,8 +101,8 @@ export const calendarRouter = createTRPCRouter({
         })
 
         return event
-      } catch (error: any) {
-        throw new Error(error.message || '無法建立事件')
+      } catch (error) {
+        handleCalendarError(error, '無法建立事件')
       }
     }),
 
@@ -117,7 +124,7 @@ export const calendarRouter = createTRPCRouter({
       const calendarService = new GoogleCalendarService(ctx.session.user.id)
 
       try {
-        const updateData: any = {}
+        const updateData: Partial<CalendarEvent> = {}
 
         if (input.summary) updateData.summary = input.summary
         if (input.description) updateData.description = input.description
@@ -137,8 +144,8 @@ export const calendarRouter = createTRPCRouter({
         const event = await calendarService.updateEvent(input.eventId, updateData)
 
         return event
-      } catch (error: any) {
-        throw new Error(error.message || '無法更新事件')
+      } catch (error) {
+        handleCalendarError(error, '無法更新事件')
       }
     }),
 
@@ -157,8 +164,8 @@ export const calendarRouter = createTRPCRouter({
       try {
         await calendarService.deleteEvent(input.eventId)
         return { success: true }
-      } catch (error: any) {
-        throw new Error(error.message || '無法刪除事件')
+      } catch (error) {
+        handleCalendarError(error, '無法刪除事件')
       }
     }),
 
@@ -177,8 +184,8 @@ export const calendarRouter = createTRPCRouter({
       try {
         await calendarService.syncAssignment(input.assignmentId)
         return { success: true, message: '已同步到 Google Calendar' }
-      } catch (error: any) {
-        throw new Error(error.message || '無法同步作業到行事曆')
+      } catch (error) {
+        handleCalendarError(error, '無法同步作業到行事曆')
       }
     }),
 
@@ -197,8 +204,8 @@ export const calendarRouter = createTRPCRouter({
       try {
         await calendarService.unsyncAssignment(input.assignmentId)
         return { success: true, message: '已從行事曆移除' }
-      } catch (error: any) {
-        throw new Error(error.message || '無法從行事曆移除')
+      } catch (error) {
+        handleCalendarError(error, '無法從行事曆移除')
       }
     }),
 
@@ -210,8 +217,8 @@ export const calendarRouter = createTRPCRouter({
 
     try {
       return await calendarService.listCalendars()
-    } catch (error: any) {
-      throw new Error(error.message || '無法取得行事曆列表')
+    } catch (error) {
+      handleCalendarError(error, '無法取得行事曆列表')
     }
   }),
 

@@ -1,10 +1,18 @@
 import OpenAI from 'openai'
 import { env } from '~/env'
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: env.OPENAI_API_KEY,
-})
+let openaiClient: OpenAI | null = null
+
+const getOpenAIClient = () => {
+  const apiKey = env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('尚未設定 OPENAI_API_KEY，無法使用語音轉錄功能')
+  }
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey })
+  }
+  return openaiClient
+}
 
 export interface TranscriptionOptions {
   language?: string // 'zh' | 'en' | 'auto'
@@ -25,6 +33,7 @@ export async function transcribeAudio(
   options: TranscriptionOptions = {}
 ): Promise<TranscriptionResult> {
   try {
+    const openai = getOpenAIClient()
     const { language = 'zh', prompt } = options
 
     // Whisper API accepts File objects

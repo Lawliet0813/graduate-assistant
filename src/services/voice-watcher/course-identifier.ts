@@ -7,6 +7,19 @@ import Anthropic from '@anthropic-ai/sdk'
 import { env } from '~/env'
 import type { Course } from '@prisma/client'
 
+type CourseScheduleSlot = {
+  dayOfWeek: number
+  startTime: string
+  endTime: string
+}
+
+type CourseMetadata = {
+  schedule?: CourseScheduleSlot[]
+  instructor?: string
+} | null
+
+type CourseWithMetadata = Course & { metadata?: CourseMetadata }
+
 export interface IdentificationResult {
   courseId: string | null
   method: 'time' | 'filename' | 'content' | null
@@ -95,15 +108,15 @@ export class CourseIdentifier {
 
     for (const course of courses) {
       // Parse course schedule from metadata
-      // Assuming Course has a schedule field in JSON format
-      const schedule = course.metadata as any
+      const metadata = (course as CourseWithMetadata).metadata
+      const schedule = metadata?.schedule
 
-      if (!schedule?.schedule || !Array.isArray(schedule.schedule)) {
+      if (!schedule || !Array.isArray(schedule)) {
         continue
       }
 
       // Check if recording time matches any class time
-      const match = this.matchTimeWithSchedule(recordedAt, schedule.schedule)
+      const match = this.matchTimeWithSchedule(recordedAt, schedule)
 
       if (match) {
         suggestedCourses.push({
@@ -133,11 +146,7 @@ export class CourseIdentifier {
    */
   private matchTimeWithSchedule(
     recordedAt: Date,
-    schedule: Array<{
-      dayOfWeek: number // 0-6 (Sunday-Saturday)
-      startTime: string // "HH:MM"
-      endTime: string // "HH:MM"
-    }>
+    schedule: CourseScheduleSlot[]
   ): { confidence: number } | null {
     const recordDay = recordedAt.getDay()
     const recordTime = this.getTimeString(recordedAt)
@@ -183,7 +192,7 @@ export class CourseIdentifier {
       const courseKeywords = this.extractKeywords(course.name)
 
       let matchCount = 0
-      let matchedKeywords: string[] = []
+      const matchedKeywords: string[] = []
 
       for (const keyword of courseKeywords) {
         if (normalizedFileName.includes(keyword.toLowerCase())) {
@@ -229,10 +238,10 @@ export class CourseIdentifier {
       const shortTranscript = transcript.split(/\s+/).slice(0, 500).join(' ')
 
       const courseList = courses
-        .map(
-          (c, i) =>
-            `${i + 1}. ${c.name} (教師：${(c.metadata as any)?.instructor || '未知'})`
-        )
+        .map((c, i) => {
+          const metadata = (c as CourseWithMetadata).metadata
+          return `${i + 1}. ${c.name} (教師：${metadata?.instructor || '未知'})`
+        })
         .join('\n')
 
       const message = await this.anthropic.messages.create({

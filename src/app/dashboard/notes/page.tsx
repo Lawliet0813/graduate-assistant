@@ -9,9 +9,6 @@ import { VoiceRecorder } from '~/components/voice-recorder'
 import { AudioPlayer } from '~/components/audio-player'
 import { trpc } from '~/lib/trpc/client'
 
-type VoiceNoteSource = 'WEB' | 'ICLOUD'
-type VoiceNoteStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'NEEDS_REVIEW'
-
 export default function VoiceNotesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [courseFilter, setCourseFilter] = useState<string>('all')

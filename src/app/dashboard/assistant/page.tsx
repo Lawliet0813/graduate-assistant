@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
+import { Card, CardContent } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
 import { trpc } from '~/lib/trpc/client'
 
@@ -14,7 +14,6 @@ interface Message {
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
-  const [selectedQuickHelp, setSelectedQuickHelp] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const chatMutation = trpc.ai.chat.useMutation({

@@ -84,8 +84,8 @@ class MoodleScraper:
             self.driver.get(self.base_url)
 
             # 等待頁面載入
-            wait = WebDriverWait(self.driver, 15)
-            time.sleep(2)
+            wait = WebDriverWait(self.driver, 20)
+            time.sleep(3)
 
             # 檢查是否已經登入
             try:
@@ -96,139 +96,281 @@ class MoodleScraper:
                 pass
 
             # 嘗試多種登入方式
-            print("→ 尋找登入表單...")
+            print("→ 尋找登入入口...")
             
-            # 方式1: 尋找包含 "登入" 文字的連結或按鈕
+            # 檢查是否在 iframe 中
+            iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+            if iframes:
+                print(f"→ 發現 {len(iframes)} 個 iframe，嘗試切換...")
+                for i, iframe in enumerate(iframes):
+                    try:
+                        self.driver.switch_to.frame(iframe)
+                        # 檢查是否有登入表單
+                        if self.driver.find_elements(By.ID, "username") or \
+                           self.driver.find_elements(By.NAME, "username") or \
+                           self.driver.find_elements(By.CSS_SELECTOR, "input[type='text']"):
+                            print(f"  ✓ 在 iframe {i} 中找到登入表單")
+                            break
+                        else:
+                            # 切換回主頁面
+                            self.driver.switch_to.default_content()
+                    except:
+                        self.driver.switch_to.default_content()
+                        continue
+            
+            # 方式1: 尋找 SSO 登入按鈕（NCCU 使用）
             try:
-                login_link = self.driver.find_element(By.PARTIAL_LINK_TEXT, "登入")
-                print("→ 找到登入連結")
-                login_link.click()
-                time.sleep(2)
-            except NoSuchElementException:
-                print("→ 未找到登入連結，可能已在登入頁面")
-
-            # 方式2: 直接尋找帳號輸入框（各種可能的 ID）
-            username_field = None
-            possible_username_ids = ["username", "userNameInput", "user", "userid", "login"]
+                # 嘗試尋找包含 "SSO" 或特定登入文字的按鈕/連結
+                sso_buttons = self.driver.find_elements(By.XPATH, 
+                    "//button[contains(., 'SSO')] | //a[contains(., 'SSO')] | " +
+                    "//button[contains(@class, 'login')] | //a[contains(@class, 'login')] | " +
+                    "//button[contains(., '登入')] | //a[contains(., '登入')]")
+                
+                if sso_buttons:
+                    print("→ 找到 SSO 登入按鈕")
+                    sso_buttons[0].click()
+                    time.sleep(3)
+            except Exception as e:
+                print(f"→ 尋找 SSO 按鈕時發生錯誤: {e}")
             
-            for field_id in possible_username_ids:
+            # 方式2: 檢查是否有 "login" 連結或導向到登入頁面
+            try:
+                login_links = self.driver.find_elements(By.XPATH, 
+                    "//a[contains(@href, 'login')] | //a[contains(text(), '登入')]")
+                if login_links:
+                    print("→ 找到登入連結")
+                    login_links[0].click()
+                    time.sleep(3)
+            except Exception as e:
+                print(f"→ 尋找登入連結時發生錯誤: {e}")
+
+            # 方式3: 直接尋找帳號輸入框（各種可能的選擇器）
+            username_field = None
+            possible_selectors = [
+                (By.ID, "username"),
+                (By.ID, "userNameInput"),
+                (By.ID, "user"),
+                (By.ID, "userid"),
+                (By.ID, "login"),
+                (By.NAME, "username"),
+                (By.NAME, "UserName"),
+                (By.CSS_SELECTOR, "input[type='text'][name*='user']"),
+                (By.CSS_SELECTOR, "input[type='text'][id*='user']"),
+                (By.CSS_SELECTOR, "input[placeholder*='帳號']"),
+                (By.CSS_SELECTOR, "input[placeholder*='學號']"),
+            ]
+            
+            for by_method, selector in possible_selectors:
                 try:
-                    username_field = self.driver.find_element(By.ID, field_id)
-                    print(f"→ 找到帳號輸入框: {field_id}")
+                    username_field = wait.until(
+                        EC.presence_of_element_located((by_method, selector))
+                    )
+                    print(f"→ 找到帳號輸入框: {by_method}={selector}")
                     break
-                except NoSuchElementException:
+                except (NoSuchElementException, TimeoutException):
                     continue
 
-            # 如果還是找不到，嘗試用 name 屬性
+            # 如果還是找不到，嘗試所有可見的 text input
             if not username_field:
                 try:
-                    username_field = self.driver.find_element(By.NAME, "username")
-                    print("→ 找到帳號輸入框 (name=username)")
-                except NoSuchElementException:
-                    # 最後嘗試用 type
-                    try:
-                        username_fields = self.driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
-                        if username_fields:
-                            username_field = username_fields[0]
-                            print("→ 找到帳號輸入框 (type=text)")
-                    except:
-                        pass
+                    text_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='email']")
+                    visible_inputs = [inp for inp in text_inputs if inp.is_displayed()]
+                    if visible_inputs:
+                        username_field = visible_inputs[0]
+                        print("→ 找到可見的文字輸入框")
+                except:
+                    pass
 
             if not username_field:
                 print("✗ 無法找到帳號輸入框")
-                # 保存截圖以便除錯
+                print(f"→ 當前 URL: {self.driver.current_url}")
+                print(f"→ 頁面標題: {self.driver.title}")
+                # 保存頁面資訊以便除錯
                 self.driver.save_screenshot("/tmp/moodle_login_error.png")
+                with open("/tmp/moodle_page_source.html", "w", encoding="utf-8") as f:
+                    f.write(self.driver.page_source)
                 print("→ 已儲存截圖至 /tmp/moodle_login_error.png")
+                print("→ 已儲存頁面原始碼至 /tmp/moodle_page_source.html")
                 return False
 
             # 輸入帳號
             print("→ 輸入帳號")
-            username_field.clear()
-            username_field.send_keys(self.username)
+            try:
+                # 等待輸入框變為可點擊
+                wait.until(EC.element_to_be_clickable(username_field))
+                time.sleep(0.5)
+                
+                # 點擊輸入框以獲得焦點
+                try:
+                    username_field.click()
+                    time.sleep(0.3)
+                except:
+                    pass
+                
+                # 清空並輸入
+                try:
+                    username_field.clear()
+                except:
+                    pass
+                
+                username_field.send_keys(self.username)
+                time.sleep(0.5)
+                print(f"  ✓ 已輸入帳號")
+            except Exception as e:
+                print(f"  ⚠ 輸入帳號時發生錯誤: {e}")
+                # 嘗試用 JavaScript 輸入
+                try:
+                    self.driver.execute_script(
+                        f"arguments[0].value = '{self.username}';",
+                        username_field
+                    )
+                    print(f"  ✓ 已使用 JavaScript 輸入帳號")
+                except Exception as js_error:
+                    print(f"  ✗ JavaScript 輸入也失敗: {js_error}")
+                    self.driver.save_screenshot("/tmp/moodle_username_error.png")
+                    return False
 
             # 尋找密碼輸入框
             password_field = None
-            possible_password_ids = ["password", "passwordInput", "pass", "passwd"]
+            password_selectors = [
+                (By.ID, "password"),
+                (By.ID, "passwordInput"),
+                (By.ID, "pass"),
+                (By.ID, "passwd"),
+                (By.NAME, "password"),
+                (By.NAME, "Password"),
+                (By.CSS_SELECTOR, "input[type='password']"),
+                (By.CSS_SELECTOR, "input[placeholder*='密碼']"),
+            ]
             
-            for field_id in possible_password_ids:
+            for by_method, selector in password_selectors:
                 try:
-                    password_field = self.driver.find_element(By.ID, field_id)
-                    print(f"→ 找到密碼輸入框: {field_id}")
+                    password_field = self.driver.find_element(by_method, selector)
+                    print(f"→ 找到密碼輸入框: {by_method}={selector}")
                     break
                 except NoSuchElementException:
                     continue
 
             if not password_field:
-                try:
-                    password_field = self.driver.find_element(By.NAME, "password")
-                    print("→ 找到密碼輸入框 (name=password)")
-                except NoSuchElementException:
-                    try:
-                        password_field = self.driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-                        print("→ 找到密碼輸入框 (type=password)")
-                    except:
-                        pass
-
-            if not password_field:
                 print("✗ 無法找到密碼輸入框")
+                print(f"→ 當前 URL: {self.driver.current_url}")
                 return False
 
             # 輸入密碼
             print("→ 輸入密碼")
-            password_field.clear()
-            password_field.send_keys(self.password)
+            try:
+                # 確保密碼框可點擊
+                time.sleep(0.5)
+                try:
+                    password_field.click()
+                    time.sleep(0.3)
+                except:
+                    pass
+                
+                # 清空並輸入
+                try:
+                    password_field.clear()
+                except:
+                    pass
+                
+                password_field.send_keys(self.password)
+                time.sleep(0.5)
+                print(f"  ✓ 已輸入密碼")
+            except Exception as e:
+                print(f"  ⚠ 輸入密碼時發生錯誤: {e}")
+                # 嘗試用 JavaScript 輸入
+                try:
+                    self.driver.execute_script(
+                        f"arguments[0].value = '{self.password}';",
+                        password_field
+                    )
+                    print(f"  ✓ 已使用 JavaScript 輸入密碼")
+                except Exception as js_error:
+                    print(f"  ✗ JavaScript 輸入也失敗: {js_error}")
+                    self.driver.save_screenshot("/tmp/moodle_password_error.png")
+                    return False
 
             # 尋找登入按鈕
             login_button = None
-            possible_button_ids = ["loginbtn", "submitButton", "submit", "login"]
+            button_selectors = [
+                (By.ID, "loginbtn"),
+                (By.ID, "submitButton"),
+                (By.ID, "submit"),
+                (By.ID, "login"),
+                (By.NAME, "submitButton"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.XPATH, "//button[contains(., '登入')] | //button[contains(., 'Login')] | //button[contains(., '送出')]"),
+            ]
             
-            for button_id in possible_button_ids:
+            for by_method, selector in button_selectors:
                 try:
-                    login_button = self.driver.find_element(By.ID, button_id)
-                    print(f"→ 找到登入按鈕: {button_id}")
-                    break
-                except NoSuchElementException:
+                    buttons = self.driver.find_elements(by_method, selector)
+                    visible_buttons = [btn for btn in buttons if btn.is_displayed() and btn.is_enabled()]
+                    if visible_buttons:
+                        login_button = visible_buttons[0]
+                        print(f"→ 找到登入按鈕: {by_method}={selector}")
+                        break
+                except:
                     continue
 
             if not login_button:
+                print("✗ 無法找到登入按鈕，嘗試按 Enter")
+                # 如果找不到按鈕，嘗試在密碼框按 Enter
+                from selenium.webdriver.common.keys import Keys
+                password_field.send_keys(Keys.RETURN)
+            else:
+                # 點擊登入
+                print("→ 點擊登入按鈕")
                 try:
-                    login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-                    print("→ 找到登入按鈕 (type=submit)")
-                except NoSuchElementException:
-                    try:
-                        login_button = self.driver.find_element(By.CSS_SELECTOR, "input[type='submit']")
-                        print("→ 找到登入按鈕 (input submit)")
-                    except:
-                        pass
+                    login_button.click()
+                except:
+                    # 如果點擊失敗，嘗試用 JavaScript 點擊
+                    self.driver.execute_script("arguments[0].click();", login_button)
 
-            if not login_button:
-                print("✗ 無法找到登入按鈕")
-                return False
-
-            # 點擊登入
-            print("→ 點擊登入按鈕")
-            login_button.click()
-
-            # 等待登入完成
+            # 等待登入完成（增加等待時間）
+            print("→ 等待登入完成...")
             time.sleep(5)
             
-            # 檢查是否登入成功
-            try:
-                wait.until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "usermenu"))
-                )
-                print("✓ 登入成功")
-                return True
-            except TimeoutException:
-                # 可能已經在 dashboard，檢查 URL
-                if "my" in self.driver.current_url or "dashboard" in self.driver.current_url:
-                    print("✓ 登入成功 (已進入 dashboard)")
+            # 檢查是否登入成功（多種方式）
+            success_indicators = [
+                (By.CLASS_NAME, "usermenu"),
+                (By.CSS_SELECTOR, ".usermenu"),
+                (By.XPATH, "//*[contains(@class, 'usermenu')]"),
+                (By.XPATH, "//*[contains(@class, 'userbutton')]"),
+            ]
+            
+            for by_method, selector in success_indicators:
+                try:
+                    wait.until(EC.presence_of_element_located((by_method, selector)))
+                    print("✓ 登入成功")
                     return True
-                else:
-                    print(f"✗ 登入失敗，當前 URL: {self.driver.current_url}")
-                    self.driver.save_screenshot("/tmp/moodle_login_failed.png")
-                    print("→ 已儲存截圖至 /tmp/moodle_login_failed.png")
-                    return False
+                except TimeoutException:
+                    continue
+            
+            # 檢查 URL 是否改變（表示可能登入成功）
+            current_url = self.driver.current_url.lower()
+            if any(keyword in current_url for keyword in ["my", "dashboard", "course", "/my/"]):
+                print(f"✓ 登入成功 (URL 已變更: {self.driver.current_url})")
+                return True
+            
+            # 檢查是否有錯誤訊息
+            try:
+                error_elements = self.driver.find_elements(By.XPATH, 
+                    "//*[contains(@class, 'error')] | //*[contains(@class, 'alert')]")
+                if error_elements:
+                    error_text = " ".join([e.text for e in error_elements if e.text])
+                    print(f"✗ 登入失敗，錯誤訊息: {error_text}")
+            except:
+                pass
+            
+            print(f"✗ 登入失敗，當前 URL: {self.driver.current_url}")
+            self.driver.save_screenshot("/tmp/moodle_login_failed.png")
+            with open("/tmp/moodle_login_failed.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source)
+            print("→ 已儲存截圖至 /tmp/moodle_login_failed.png")
+            print("→ 已儲存頁面原始碼至 /tmp/moodle_login_failed.html")
+            return False
 
         except Exception as e:
             print(f"✗ 登入過程發生錯誤: {e}")
@@ -258,26 +400,81 @@ class MoodleScraper:
             wait = WebDriverWait(self.driver, 10)
             time.sleep(2)
 
-            # 尋找所有課程連結
-            course_elements = self.driver.find_elements(By.CSS_SELECTOR, ".coursename a")
+            # 嘗試多種課程選擇器
+            course_elements = []
+            selectors = [
+                ".coursename a",  # 標準 Moodle
+                "a.aalink.coursename",  # 新版 Moodle
+                "[data-type='course'] a",  # 使用 data 屬性
+                ".course-info-container a",  # 課程資訊容器
+                "div.course-content a[href*='course/view']",  # 包含課程連結
+                "a[href*='course/view.php']",  # 直接找課程連結
+                ".dashboard-card a",  # Dashboard 卡片
+                "[class*='course'] a[href*='/course/']",  # 通用課程連結
+            ]
+            
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if elements:
+                        print(f"  → 使用選擇器找到 {len(elements)} 個元素: {selector}")
+                        course_elements = elements
+                        break
+                except:
+                    continue
+            
+            # 如果還是找不到，嘗試尋找所有包含 course/view 的連結
+            if not course_elements:
+                try:
+                    all_links = self.driver.find_elements(By.TAG_NAME, "a")
+                    course_elements = [
+                        link for link in all_links 
+                        if link.get_attribute('href') and 'course/view' in link.get_attribute('href')
+                    ]
+                    print(f"  → 使用通用方法找到 {len(course_elements)} 個課程連結")
+                except:
+                    pass
 
             courses = []
+            seen_urls = set()  # 避免重複
+            
             for elem in course_elements:
-                course_name = elem.text.strip()
-                course_url = elem.get_attribute('href')
+                try:
+                    course_name = elem.text.strip()
+                    course_url = elem.get_attribute('href')
 
-                if course_name and course_url:
-                    # 從 URL 中提取課程 ID
-                    course_id = course_url.split('id=')[-1] if 'id=' in course_url else None
+                    if course_name and course_url and course_url not in seen_urls:
+                        # 過濾掉非課程連結
+                        if 'course/view' in course_url and '?' in course_url:
+                            seen_urls.add(course_url)
+                            
+                            # 從 URL 中提取課程 ID
+                            course_id = course_url.split('id=')[-1].split('&')[0] if 'id=' in course_url else None
 
-                    courses.append({
-                        'id': course_id,
-                        'name': course_name,
-                        'url': course_url,
-                        'sections': []
-                    })
+                            courses.append({
+                                'id': course_id,
+                                'name': course_name,
+                                'url': course_url,
+                                'sections': []
+                            })
+                except Exception as e:
+                    continue
 
             print(f"✓ 找到 {len(courses)} 門課程")
+            
+            # 如果沒找到課程，保存頁面供除錯
+            if len(courses) == 0:
+                print("⚠ 未找到任何課程，保存頁面供除錯...")
+                try:
+                    self.driver.save_screenshot("/tmp/moodle_no_courses.png")
+                    with open("/tmp/moodle_no_courses.html", "w", encoding="utf-8") as f:
+                        f.write(self.driver.page_source)
+                    print("  → 截圖: /tmp/moodle_no_courses.png")
+                    print("  → 頁面: /tmp/moodle_no_courses.html")
+                    print(f"  → 當前 URL: {self.driver.current_url}")
+                except:
+                    pass
+            
             return courses
 
         except Exception as e:

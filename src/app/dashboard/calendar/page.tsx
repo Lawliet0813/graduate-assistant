@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
+import { Card, CardContent } from '~/components/ui/card'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { trpc } from '~/lib/trpc/client'
@@ -46,15 +46,22 @@ export default function CalendarPage() {
   const { data: connectionStatus } = trpc.calendar.getConnectionStatus.useQuery()
 
   // Combine events and assignments
+  type CalendarEventFromApi = NonNullable<typeof calendarEvents>[number]
+
   const allEvents = useMemo(() => {
-    const events = calendarEvents?.map((event: any) => ({
-      id: event.id,
-      title: event.summary,
-      start: new Date(event.start?.dateTime || event.start?.date),
-      end: new Date(event.end?.dateTime || event.end?.date),
-      type: 'calendar' as const,
-      description: event.description,
-    })) || []
+    const events =
+      calendarEvents?.map((event: CalendarEventFromApi) => {
+        const startSource = event?.start?.dateTime ?? event?.start?.date
+        const endSource = event?.end?.dateTime ?? event?.end?.date
+        return {
+          id: event?.id ?? '',
+          title: event?.summary ?? '未命名事件',
+          start: startSource ? new Date(startSource) : new Date(),
+          end: endSource ? new Date(endSource) : new Date(),
+          type: 'calendar' as const,
+          description: event?.description ?? '',
+        }
+      }) || []
 
     const assignmentEvents = assignments
       ?.filter((a) => a.dueDate >= dateRange.start && a.dueDate <= dateRange.end)
@@ -153,6 +160,9 @@ export default function CalendarPage() {
             <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
               未連結 Google Calendar
             </Badge>
+          )}
+          {eventsLoading && (
+            <span className="text-xs text-gray-500">載入中...</span>
           )}
         </div>
       </div>

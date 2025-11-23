@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { signOut } from 'next-auth/react'
 import { Button } from '~/components/ui/button'
 import {
@@ -39,10 +40,13 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-3 pl-2">
               {session?.user?.image ? (
-                <img
+                <Image
                   src={session.user.image}
                   alt="Profile"
-                  className="w-8 h-8 rounded-full"
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-full object-cover"
+                  unoptimized
                 />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">

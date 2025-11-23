@@ -128,7 +128,7 @@ export const notesRouter = createTRPCRouter({
       })
 
       // Update the note with transcript
-      const updatedNote = await ctx.db.voiceNote.update({
+      await ctx.db.voiceNote.update({
         where: {
           id: input.id,
           userId: ctx.session.user.id,

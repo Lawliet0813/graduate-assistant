@@ -1,7 +1,7 @@
-import { google } from 'googleapis'
+import { google, calendar_v3 } from 'googleapis'
 import { db } from '~/server/db'
 
-interface CalendarEvent {
+export interface CalendarEvent {
   id?: string
   summary: string
   description?: string
@@ -85,7 +85,7 @@ export class GoogleCalendarService {
     timeMax?: Date
     maxResults?: number
     calendarId?: string
-  }) {
+  }): Promise<calendar_v3.Schema$Event[]> {
     const calendar = await this.getCalendarClient()
 
     const response = await calendar.events.list({
@@ -103,7 +103,7 @@ export class GoogleCalendarService {
   /**
    * Get a specific event
    */
-  async getEvent(eventId: string, calendarId = 'primary') {
+  async getEvent(eventId: string, calendarId = 'primary'): Promise<calendar_v3.Schema$Event | undefined> {
     const calendar = await this.getCalendarClient()
 
     const response = await calendar.events.get({
@@ -117,7 +117,7 @@ export class GoogleCalendarService {
   /**
    * Create a calendar event
    */
-  async createEvent(event: CalendarEvent, calendarId = 'primary') {
+  async createEvent(event: CalendarEvent, calendarId = 'primary'): Promise<calendar_v3.Schema$Event | undefined> {
     const calendar = await this.getCalendarClient()
 
     const response = await calendar.events.insert({
@@ -131,13 +131,17 @@ export class GoogleCalendarService {
   /**
    * Update a calendar event
    */
-  async updateEvent(eventId: string, event: Partial<CalendarEvent>, calendarId = 'primary') {
+  async updateEvent(
+    eventId: string,
+    event: Partial<CalendarEvent>,
+    calendarId = 'primary'
+  ): Promise<calendar_v3.Schema$Event | undefined> {
     const calendar = await this.getCalendarClient()
 
     const response = await calendar.events.update({
       calendarId,
       eventId,
-      requestBody: event as any,
+      requestBody: event as calendar_v3.Schema$Event,
     })
 
     return response.data
@@ -165,7 +169,7 @@ export class GoogleCalendarService {
     description?: string
     dueDate: Date
     courseId?: string
-  }) {
+  }): Promise<calendar_v3.Schema$Event | undefined> {
     const course = assignment.courseId
       ? await db.course.findUnique({ where: { id: assignment.courseId } })
       : null
@@ -202,7 +206,7 @@ export class GoogleCalendarService {
   /**
    * List available calendars
    */
-  async listCalendars() {
+  async listCalendars(): Promise<calendar_v3.Schema$CalendarListEntry[]> {
     const calendar = await this.getCalendarClient()
 
     const response = await calendar.calendarList.list()
@@ -226,8 +230,6 @@ export class GoogleCalendarService {
 
     if (assignment.calendarEventId) {
       // Update existing event
-      const event = await this.getEvent(assignment.calendarEventId)
-
       const startTime = new Date(assignment.dueDate)
       startTime.setHours(startTime.getHours() - 1)
 

@@ -8,8 +8,8 @@
  * 5. Send notification
  */
 
-import { TranscriptExtractor } from './transcript-extractor'
-import { CourseIdentifier } from './course-identifier'
+import { TranscriptExtractor, type VoiceFileMetadata } from './transcript-extractor'
+import { CourseIdentifier, type IdentificationResult } from './course-identifier'
 import { summarizeNote } from '~/server/services/ai-service'
 import { db } from '~/server/db'
 import { sendNotification } from './notifier'
@@ -175,8 +175,8 @@ export class VoiceFileProcessor {
    * Create a pending note for manual review
    */
   private async createPendingNote(
-    fileMetadata: any,
-    identification: any,
+    fileMetadata: VoiceFileMetadata,
+    identification: IdentificationResult | null,
     confidence: number
   ) {
     await db.voiceNote.create({

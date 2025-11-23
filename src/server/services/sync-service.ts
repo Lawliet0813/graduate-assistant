@@ -6,7 +6,11 @@
  */
 
 import { db } from '~/server/db'
-import { moodleClient, type MoodleSyncResponse } from '~/lib/moodle-client'
+import {
+  moodleClient,
+  type MoodleSyncResponse,
+  type MoodleCourseContent,
+} from '~/lib/moodle-client'
 
 export interface SyncResult {
   success: boolean
@@ -84,7 +88,7 @@ export class SyncService {
   private async syncCourseContents(
     userId: string,
     moodleCourseId: string,
-    contents: any[]
+    contents: MoodleCourseContent[]
   ): Promise<void> {
     // Find the course in our database
     const course = await db.course.findFirst({
@@ -156,7 +160,7 @@ export class SyncService {
         if (assignment.due_date) {
           try {
             dueDate = new Date(assignment.due_date)
-          } catch (e) {
+          } catch {
             console.error('Error parsing due date:', assignment.due_date)
           }
         }
@@ -292,7 +296,7 @@ export class SyncService {
   async getSyncLogs(userId: string, limit: number = 10) {
     return db.syncLog.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { startedAt: 'desc' },
       take: limit,
     })
   }

@@ -1,4 +1,4 @@
-import { google } from 'googleapis'
+import { google, gmail_v1 } from 'googleapis'
 import { db } from '~/server/db'
 
 export class GmailService {
@@ -57,7 +57,7 @@ export class GmailService {
   async listUnreadMessages(options: {
     maxResults?: number
     query?: string
-  } = {}) {
+  } = {}): Promise<gmail_v1.Schema$Message[]> {
     const gmail = await this.getGmailClient()
 
     const query = options.query ? `is:unread ${options.query}` : 'is:unread'
@@ -168,12 +168,12 @@ export class GmailService {
   /**
    * Extract body from message
    */
-  private extractBody(message: any): string {
-    if (message.payload.body?.data) {
+  private extractBody(message: gmail_v1.Schema$Message): string {
+    if (message.payload?.body?.data) {
       return Buffer.from(message.payload.body.data, 'base64').toString('utf-8')
     }
 
-    if (message.payload.parts) {
+    if (message.payload?.parts) {
       for (const part of message.payload.parts) {
         if (part.mimeType === 'text/plain' && part.body?.data) {
           return Buffer.from(part.body.data, 'base64').toString('utf-8')
@@ -187,9 +187,11 @@ export class GmailService {
   /**
    * Create assignment from email
    */
-  private async createAssignmentFromEmail(message: any, category: string) {
-    const subject = message.payload?.headers?.find((h) => h.name === 'Subject')?.value || '未命名作業'
+  private async createAssignmentFromEmail(message: gmail_v1.Schema$Message, category: string) {
+    const subject =
+      message.payload?.headers?.find((h) => h.name === 'Subject')?.value || '未命名作業'
     const body = this.extractBody(message)
+    const assignmentTitle = category ? `[${category}] ${subject}` : subject
 
     // Try to extract due date from email (basic implementation)
     const dueDate = new Date()
@@ -199,7 +201,7 @@ export class GmailService {
       data: {
         userId: this.userId,
         courseId: null, // User needs to assign course manually
-        title: subject,
+        title: assignmentTitle,
         description: body.substring(0, 500),
         dueDate,
         status: 'pending',

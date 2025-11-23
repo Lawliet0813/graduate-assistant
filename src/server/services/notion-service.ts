@@ -1,4 +1,5 @@
 import { Client } from '@notionhq/client'
+import type { BlockObjectRequest } from '@notionhq/client/build/src/api-endpoints'
 import { db } from '~/server/db'
 
 export class NotionService {
@@ -49,15 +50,15 @@ export class NotionService {
   }) {
     const notion = await this.getNotionClient()
 
-    const parent = options.parentPageId
+    const parent: { page_id: string } | { workspace: true } = options.parentPageId
       ? { page_id: options.parentPageId }
-      : { type: 'page_id' as const }
+      : { workspace: true }
 
     // Convert markdown content to Notion blocks
     const blocks = this.markdownToBlocks(options.content)
 
     const response = await notion.pages.create({
-      parent: parent as any,
+      parent,
       properties: {
         title: {
           title: [{ type: 'text', text: { content: options.title } }],
@@ -193,9 +194,9 @@ ${assignment.description || '無說明'}
   /**
    * Convert markdown to Notion blocks (simplified)
    */
-  private markdownToBlocks(markdown: string): any[] {
+  private markdownToBlocks(markdown: string): BlockObjectRequest[] {
     const lines = markdown.split('\n')
-    const blocks: any[] = []
+    const blocks: BlockObjectRequest[] = []
 
     for (const line of lines) {
       if (line.startsWith('# ')) {
@@ -249,8 +250,11 @@ ${assignment.description || '無說明'}
       const notion = await this.getNotionClient()
       const response = await notion.users.me({})
       return { success: true, user: response }
-    } catch (error: any) {
-      return { success: false, error: error.message }
+    } catch (error) {
+      if (error instanceof Error) {
+        return { success: false, error: error.message }
+      }
+      return { success: false, error: 'Unknown error' }
     }
   }
 }

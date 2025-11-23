@@ -1,10 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '~/env'
 
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: env.ANTHROPIC_API_KEY,
-})
+let anthropicClient: Anthropic | null = null
+
+const getAnthropicClient = () => {
+  const apiKey = env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error('尚未設定 ANTHROPIC_API_KEY，無法使用 AI 摘要功能')
+  }
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey })
+  }
+  return anthropicClient
+}
 
 export interface NoteSummaryOptions {
   courseName?: string
@@ -35,6 +43,7 @@ export async function summarizeNote(
   } = options
 
   try {
+    const anthropic = getAnthropicClient()
     const systemPrompt = language === 'zh'
       ? '你是一個專業的學習助手，擅長整理和摘要課程筆記。請使用繁體中文回答。'
       : 'You are a professional learning assistant specialized in organizing and summarizing course notes.'
@@ -77,57 +86,59 @@ function buildSummaryPrompt(
 ): string {
   const { courseName, includeKeyPoints, includeQuestions, language } = options
 
+  let promptText = ''
+
   if (language === 'zh') {
-    let prompt = `請幫我分析以下${courseName ? `「${courseName}」課程的` : ''}筆記內容：\n\n${transcript}\n\n`
-    prompt += '請提供：\n'
-    prompt += '1. 摘要：簡潔的內容摘要（2-3 句話）\n'
+    promptText = `請幫我分析以下${courseName ? `「${courseName}」課程的` : ''}筆記內容：\n\n${transcript}\n\n`
+    promptText += '請提供：\n'
+    promptText += '1. 摘要：簡潔的內容摘要（2-3 句話）\n'
 
     if (includeKeyPoints) {
-      prompt += '2. 關鍵點：列出 3-5 個重點（使用項目符號）\n'
+      promptText += '2. 關鍵點：列出 3-5 個重點（使用項目符號）\n'
     }
 
-    prompt += `${includeKeyPoints ? '3' : '2'}. 建議標題：為這份筆記建議一個簡短的標題（少於 10 個字）\n`
+    promptText += `${includeKeyPoints ? '3' : '2'}. 建議標題：為這份筆記建議一個簡短的標題（少於 10 個字）\n`
 
     if (includeQuestions) {
-      prompt += `${includeKeyPoints ? '4' : '3'}. 複習問題：生成 2-3 個複習用問題\n`
+      promptText += `${includeKeyPoints ? '4' : '3'}. 複習問題：生成 2-3 個複習用問題\n`
     }
 
-    prompt += '\n請使用以下格式：\n'
-    prompt += '【摘要】\n...\n\n'
+    promptText += '\n請使用以下格式：\n'
+    promptText += '【摘要】\n...\n\n'
     if (includeKeyPoints) {
-      prompt += '【關鍵點】\n- ...\n- ...\n\n'
+      promptText += '【關鍵點】\n- ...\n- ...\n\n'
     }
-    prompt += '【建議標題】\n...\n'
+    promptText += '【建議標題】\n...\n'
     if (includeQuestions) {
-      prompt += '\n【複習問題】\n1. ...\n2. ...\n'
+      promptText += '\n【複習問題】\n1. ...\n2. ...\n'
     }
   } else {
-    let prompt = `Please analyze the following${courseName ? ` notes from "${courseName}" course` : ' notes'}:\n\n${transcript}\n\n`
-    prompt += 'Please provide:\n'
-    prompt += '1. Summary: A concise summary (2-3 sentences)\n'
+    promptText = `Please analyze the following${courseName ? ` notes from "${courseName}" course` : ' notes'}:\n\n${transcript}\n\n`
+    promptText += 'Please provide:\n'
+    promptText += '1. Summary: A concise summary (2-3 sentences)\n'
 
     if (includeKeyPoints) {
-      prompt += '2. Key Points: List 3-5 main points (bullet points)\n'
+      promptText += '2. Key Points: List 3-5 main points (bullet points)\n'
     }
 
-    prompt += `${includeKeyPoints ? '3' : '2'}. Suggested Title: A short title for this note (less than 10 words)\n`
+    promptText += `${includeKeyPoints ? '3' : '2'}. Suggested Title: A short title for this note (less than 10 words)\n`
 
     if (includeQuestions) {
-      prompt += `${includeKeyPoints ? '4' : '3'}. Review Questions: Generate 2-3 review questions\n`
+      promptText += `${includeKeyPoints ? '4' : '3'}. Review Questions: Generate 2-3 review questions\n`
     }
 
-    prompt += '\nPlease use this format:\n'
-    prompt += '[Summary]\n...\n\n'
+    promptText += '\nPlease use this format:\n'
+    promptText += '[Summary]\n...\n\n'
     if (includeKeyPoints) {
-      prompt += '[Key Points]\n- ...\n- ...\n\n'
+      promptText += '[Key Points]\n- ...\n- ...\n\n'
     }
-    prompt += '[Suggested Title]\n...\n'
+    promptText += '[Suggested Title]\n...\n'
     if (includeQuestions) {
-      prompt += '\n[Review Questions]\n1. ...\n2. ...\n'
+      promptText += '\n[Review Questions]\n1. ...\n2. ...\n'
     }
   }
 
-  return prompt
+  return promptText
 }
 
 /**

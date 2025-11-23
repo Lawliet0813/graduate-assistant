@@ -13,11 +13,21 @@ export default function DashboardPage() {
     enabled: !!session?.user,
   })
 
-  // Fetch real data
-  const { data: courses, isLoading: coursesLoading } = trpc.courses.list.useQuery()
-  const { data: allAssignments, isLoading: assignmentsLoading } = trpc.assignments.list.useQuery()
-  const { data: upcomingAssignments } = trpc.assignments.getUpcoming.useQuery({ days: 7 })
-  const { data: syncLogs } = trpc.courses.syncLogs.useQuery({ limit: 5 })
+  // Fetch real data - only when authenticated
+  const { data: courses, isLoading: coursesLoading } = trpc.courses.list.useQuery(undefined, {
+    enabled: !!session?.user,
+  })
+  const { data: allAssignments, isLoading: assignmentsLoading } = trpc.assignments.list.useQuery(undefined, {
+    enabled: !!session?.user,
+  })
+  const { data: upcomingAssignments } = trpc.assignments.getUpcoming.useQuery(
+    { days: 7 },
+    { enabled: !!session?.user }
+  )
+  const { data: syncLogs } = trpc.courses.syncLogs.useQuery(
+    { limit: 5 },
+    { enabled: !!session?.user }
+  )
 
   // Calculate statistics
   type Assignment = NonNullable<typeof allAssignments>[number]
@@ -196,44 +206,63 @@ export default function DashboardPage() {
         <CardContent>
           {syncLogs && syncLogs.length > 0 ? (
             <div className="space-y-4">
-              {syncLogs.map((log) => (
-                <div key={log.id} className="flex items-start gap-3 pb-4 border-b last:border-0 last:pb-0">
-                  <div
-                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                      log.status === 'success' ? 'bg-green-100' : 'bg-red-100'
-                    }`}
-                  >
-                    {log.status === 'success' ? (
-                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
+              {syncLogs.map((log) => {
+                const processedCount = log.itemsProcessed ?? 0
+                const detailText =
+                  processedCount > 0
+                    ? `已同步 ${processedCount} 個項目`
+                    : log.errorMessage || '無詳細資訊'
+                const timestamp = new Date(log.completedAt ?? log.startedAt).toLocaleString('zh-TW')
+                const statusLabel =
+                  log.status === 'success'
+                    ? '同步成功'
+                    : log.status === 'partial'
+                    ? '同步部分完成'
+                    : '同步失敗'
+                const statusWrapper =
+                  log.status === 'success'
+                    ? 'bg-green-100'
+                    : log.status === 'partial'
+                    ? 'bg-amber-100'
+                    : 'bg-red-100'
+
+                return (
+                  <div key={log.id} className="flex items-start gap-3 pb-4 border-b last:border-0 last:pb-0">
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${statusWrapper}`}>
+                      {log.status === 'success' ? (
+                        <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : log.status === 'partial' ? (
+                        <svg className="w-4 h-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-4a1 1 0 00-1 1v1a1 1 0 002 0V10a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{statusLabel}</p>
+                      <p className="text-sm text-gray-600 mt-0.5">{detailText}</p>
+                      <p className="text-xs text-gray-500 mt-1">{timestamp}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {log.status === 'success' ? '同步成功' : '同步失敗'}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-0.5">
-                      {log.itemsSynced ? `已同步 ${log.itemsSynced} 個項目` : log.errorMessage || '無詳細資訊'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(log.syncedAt).toLocaleString('zh-TW')}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
