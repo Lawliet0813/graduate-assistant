@@ -1,10 +1,15 @@
 """
 Adapter module to convert Moodle scraper output to API response format
+Supports both Selenium scraping and Moodle Web Services API
 """
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from .moodle_scraper import MoodleScraper
+from .moodle_api_client import MoodleAPIClient
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MoodleAdapter:
@@ -125,7 +130,15 @@ class MoodleAdapter:
 class MoodleService:
     """Service class to handle Moodle operations"""
 
-    def __init__(self, base_url: str, username: str, password: str, headless: bool = True):
+    def __init__(
+        self,
+        base_url: str,
+        username: str = None,
+        password: str = None,
+        token: str = None,
+        headless: bool = True,
+        use_api: bool = True
+    ):
         """
         Initialize Moodle service
 
@@ -133,29 +146,66 @@ class MoodleService:
             base_url: Moodle base URL
             username: Username for login
             password: Password for login
-            headless: Whether to run browser in headless mode
+            token: Web Service Token (optional, if available)
+            headless: Whether to run browser in headless mode (for Selenium)
+            use_api: Whether to use Web Services API (True) or Selenium scraper (False)
         """
         self.base_url = base_url
         self.username = username
         self.password = password
+        self.token = token
         self.headless = headless
+        self.use_api = use_api
         self.adapter = MoodleAdapter()
+
+        # Initialize API client if using API mode
+        if self.use_api:
+            self.api_client = MoodleAPIClient(
+                base_url=base_url,
+                username=username,
+                password=password,
+                token=token
+            )
+        else:
+            self.api_client = None
 
     def login(self) -> Dict[str, Any]:
         """
-        Login to Moodle
+        Login to Moodle (or test API connection)
 
         Returns:
             Login result with success status
         """
         try:
-            with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
-                # The scraper's __enter__ method handles login
-                return {
-                    "success": True,
-                    "message": "Successfully logged in to Moodle",
-                    "session_id": "mock-session-id"  # In real implementation, extract from cookies
-                }
+            if self.use_api:
+                # Test API connection and get token
+                if self.api_client.test_connection():
+                    return {
+                        "success": True,
+                        "message": "Successfully connected to Moodle API",
+                        "session_id": self.api_client.token[:10] + "..." if self.api_client.token else None
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": "Failed to connect to Moodle API",
+                        "session_id": None
+                    }
+            else:
+                # Use Selenium scraper
+                with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
+                    if scraper.login():
+                        return {
+                            "success": True,
+                            "message": "Successfully logged in to Moodle",
+                            "session_id": "selenium-session"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": "Login failed",
+                            "session_id": None
+                        }
         except Exception as e:
             return {
                 "success": False,
@@ -171,20 +221,27 @@ class MoodleService:
             List of courses
         """
         try:
-            with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
-                raw_data = scraper.scrape_all()
-
-                if not raw_data or "courses" not in raw_data:
-                    return []
-
-                courses = [
-                    self.adapter.convert_course(course)
-                    for course in raw_data["courses"]
-                ]
-
+            if self.use_api:
+                # Use API client
+                courses = self.api_client.get_user_courses()
+                logger.info(f"✓ 使用 API 獲取 {len(courses)} 門課程")
                 return courses
+            else:
+                # Use Selenium scraper
+                with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
+                    raw_data = scraper.scrape_all()
+
+                    if not raw_data or "courses" not in raw_data:
+                        return []
+
+                    courses = [
+                        self.adapter.convert_course(course)
+                        for course in raw_data["courses"]
+                    ]
+
+                    return courses
         except Exception as e:
-            print(f"Error getting courses: {e}")
+            logger.error(f"Error getting courses: {e}")
             return []
 
     def get_course_detail(self, course_id: str) -> Optional[Dict[str, Any]]:
@@ -198,24 +255,57 @@ class MoodleService:
             Course details with contents, or None if not found
         """
         try:
-            with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
-                raw_data = scraper.scrape_all()
+            if self.use_api:
+                # Use API client
+                contents = self.api_client.get_course_contents(int(course_id))
 
-                if not raw_data or "courses" not in raw_data:
+                # Get basic course info from courses list
+                courses = self.api_client.get_user_courses()
+                course_info = next((c for c in courses if c['id'] == course_id), None)
+
+                if course_info:
+                    # Convert API format to expected format
+                    formatted_contents = []
+                    for section in contents:
+                        formatted_section = {
+                            "section_name": section['name'],
+                            "activities": [
+                                {
+                                    "type": activity['modname'],
+                                    "name": activity['name'],
+                                    "url": activity.get('url', ''),
+                                    "description": activity.get('description', ''),
+                                }
+                                for activity in section['activities']
+                            ]
+                        }
+                        formatted_contents.append(formatted_section)
+
+                    course_info['contents'] = formatted_contents
+                    logger.info(f"✓ 使用 API 獲取課程 {course_id} 的詳細資訊")
+                    return course_info
+                else:
                     return None
+            else:
+                # Use Selenium scraper
+                with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
+                    raw_data = scraper.scrape_all()
 
-                # Find course by ID
-                for course in raw_data["courses"]:
-                    if course.get("id") == course_id:
-                        course_info = self.adapter.convert_course(course)
-                        course_info["contents"] = self.adapter.convert_course_content(
-                            course.get("sections", [])
-                        )
-                        return course_info
+                    if not raw_data or "courses" not in raw_data:
+                        return None
 
-                return None
+                    # Find course by ID
+                    for course in raw_data["courses"]:
+                        if course.get("id") == course_id:
+                            course_info = self.adapter.convert_course(course)
+                            course_info["contents"] = self.adapter.convert_course_content(
+                                course.get("sections", [])
+                            )
+                            return course_info
+
+                    return None
         except Exception as e:
-            print(f"Error getting course detail: {e}")
+            logger.error(f"Error getting course detail: {e}")
             return None
 
     def get_assignments(self, course_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -229,22 +319,45 @@ class MoodleService:
             List of assignments
         """
         try:
-            with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
-                raw_data = scraper.scrape_all()
+            if self.use_api:
+                # Use API client
+                course_ids = [int(course_id)] if course_id else None
+                assignments = self.api_client.get_assignments(course_ids=course_ids)
 
-                if not raw_data or "courses" not in raw_data:
-                    return []
+                # Convert to expected format
+                formatted_assignments = []
+                for assignment in assignments:
+                    formatted_assignments.append({
+                        "id": assignment['id'],
+                        "course_id": assignment['course_id'],
+                        "course_name": assignment['course_name'],
+                        "name": assignment['name'],
+                        "due_date": datetime.fromtimestamp(assignment['duedate']).isoformat() if assignment.get('duedate') else None,
+                        "status": "pending",  # API doesn't provide status, would need separate call
+                        "url": assignment['url'],
+                        "description": assignment.get('intro', ''),
+                    })
 
-                # Extract assignments from all courses
-                assignments = self.adapter.extract_assignments_from_courses(raw_data["courses"])
+                logger.info(f"✓ 使用 API 獲取 {len(formatted_assignments)} 個作業")
+                return formatted_assignments
+            else:
+                # Use Selenium scraper
+                with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
+                    raw_data = scraper.scrape_all()
 
-                # Filter by course_id if provided
-                if course_id:
-                    assignments = [a for a in assignments if a["course_id"] == course_id]
+                    if not raw_data or "courses" not in raw_data:
+                        return []
 
-                return assignments
+                    # Extract assignments from all courses
+                    assignments = self.adapter.extract_assignments_from_courses(raw_data["courses"])
+
+                    # Filter by course_id if provided
+                    if course_id:
+                        assignments = [a for a in assignments if a["course_id"] == course_id]
+
+                    return assignments
         except Exception as e:
-            print(f"Error getting assignments: {e}")
+            logger.error(f"Error getting assignments: {e}")
             return []
 
     def sync_all(self) -> Dict[str, Any]:
@@ -255,33 +368,31 @@ class MoodleService:
             Sync result with data
         """
         try:
-            with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
-                raw_data = scraper.scrape_all()
+            if self.use_api:
+                # Use API client
+                logger.info("開始使用 API 同步 Moodle 資料...")
 
-                if not raw_data or "courses" not in raw_data:
-                    return {
-                        "success": False,
-                        "message": "No data received from Moodle",
-                        "courses_count": 0,
-                        "assignments_count": 0,
-                        "data": {}
-                    }
+                # Get courses
+                courses = self.get_courses()
 
-                # Convert courses
-                courses = [
-                    {
-                        **self.adapter.convert_course(course),
-                        "contents": self.adapter.convert_course_content(course.get("sections", []))
-                    }
-                    for course in raw_data["courses"]
-                ]
+                # Get all assignments
+                assignments = self.get_assignments()
 
-                # Extract assignments
-                assignments = self.adapter.extract_assignments_from_courses(raw_data["courses"])
+                # Get detailed contents for each course
+                for course in courses:
+                    try:
+                        course_detail = self.get_course_detail(course['id'])
+                        if course_detail and 'contents' in course_detail:
+                            course['contents'] = course_detail['contents']
+                    except Exception as e:
+                        logger.error(f"Failed to get contents for course {course['id']}: {e}")
+                        course['contents'] = []
+
+                logger.info(f"✓ API 同步完成: {len(courses)} 門課程, {len(assignments)} 個作業")
 
                 return {
                     "success": True,
-                    "message": "Successfully synced Moodle data",
+                    "message": "Successfully synced Moodle data using API",
                     "courses_count": len(courses),
                     "assignments_count": len(assignments),
                     "data": {
@@ -290,7 +401,45 @@ class MoodleService:
                         "synced_at": datetime.now().isoformat()
                     }
                 }
+            else:
+                # Use Selenium scraper
+                with MoodleScraper(self.base_url, self.username, self.password, self.headless) as scraper:
+                    raw_data = scraper.scrape_all()
+
+                    if not raw_data or "courses" not in raw_data:
+                        return {
+                            "success": False,
+                            "message": "No data received from Moodle",
+                            "courses_count": 0,
+                            "assignments_count": 0,
+                            "data": {}
+                        }
+
+                    # Convert courses
+                    courses = [
+                        {
+                            **self.adapter.convert_course(course),
+                            "contents": self.adapter.convert_course_content(course.get("sections", []))
+                        }
+                        for course in raw_data["courses"]
+                    ]
+
+                    # Extract assignments
+                    assignments = self.adapter.extract_assignments_from_courses(raw_data["courses"])
+
+                    return {
+                        "success": True,
+                        "message": "Successfully synced Moodle data using Selenium",
+                        "courses_count": len(courses),
+                        "assignments_count": len(assignments),
+                        "data": {
+                            "courses": courses,
+                            "assignments": assignments,
+                            "synced_at": datetime.now().isoformat()
+                        }
+                    }
         except Exception as e:
+            logger.error(f"Sync failed: {e}")
             return {
                 "success": False,
                 "message": f"Sync failed: {str(e)}",

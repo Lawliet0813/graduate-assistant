@@ -118,18 +118,51 @@ class MoodleScraper:
                         self.driver.switch_to.default_content()
                         continue
             
-            # 方式1: 尋找 SSO 登入按鈕（NCCU 使用）
+            # 方式1: 尋找 SSO 登入按鈕（NCCU INCCU 單一登入）
             try:
-                # 嘗試尋找包含 "SSO" 或特定登入文字的按鈕/連結
-                sso_buttons = self.driver.find_elements(By.XPATH, 
-                    "//button[contains(., 'SSO')] | //a[contains(., 'SSO')] | " +
-                    "//button[contains(@class, 'login')] | //a[contains(@class, 'login')] | " +
-                    "//button[contains(., '登入')] | //a[contains(., '登入')]")
-                
-                if sso_buttons:
-                    print("→ 找到 SSO 登入按鈕")
-                    sso_buttons[0].click()
-                    time.sleep(3)
+                # 擴展搜尋範圍，包含 INCCU 相關的按鈕和連結
+                sso_selectors = [
+                    # 政大師生登入按鈕（最優先）
+                    "//a[contains(text(), '政大師生登入')]",
+                    "//button[contains(text(), '政大師生登入')]",
+                    "//a[contains(., '政大師生')]",
+                    "//button[contains(., '政大師生')]",
+                    "//input[@value='政大師生登入']",
+                    # INCCU 單一登入相關
+                    "//a[contains(@href, 'inccu')]",
+                    "//a[contains(text(), 'INCCU')]",
+                    "//button[contains(text(), 'INCCU')]",
+                    "//a[contains(text(), '單一登入')]",
+                    # 一般 SSO 按鈕
+                    "//button[contains(., 'SSO')] | //a[contains(., 'SSO')]",
+                    "//a[contains(@href, 'sso')] | //a[contains(@href, 'SSO')]",
+                    # 登入相關
+                    "//button[contains(@class, 'login')] | //a[contains(@class, 'login')]",
+                    "//button[contains(., '登入')] | //a[contains(., '登入')]",
+                ]
+
+                sso_button_found = False
+                for selector in sso_selectors:
+                    try:
+                        sso_buttons = self.driver.find_elements(By.XPATH, selector)
+                        if sso_buttons:
+                            button_text = sso_buttons[0].text or sso_buttons[0].get_attribute('value') or 'SSO'
+                            print(f"→ 找到登入按鈕: {button_text}")
+                            sso_buttons[0].click()
+                            sso_button_found = True
+                            print("→ 等待跳轉到 INCCU 登入頁面...")
+                            time.sleep(5)  # 增加等待時間，等待頁面跳轉
+
+                            # 檢查是否已跳轉到 INCCU
+                            current_url = self.driver.current_url.lower()
+                            if 'inccu' in current_url or 'sso' in current_url:
+                                print(f"  ✓ 已跳轉到 INCCU 登入頁面: {self.driver.current_url}")
+                            break
+                    except:
+                        continue
+
+                if sso_button_found:
+                    print("  ℹ 使用政大 INCCU 單一登入，請使用您的政大帳號密碼")
             except Exception as e:
                 print(f"→ 尋找 SSO 按鈕時發生錯誤: {e}")
             
@@ -144,20 +177,34 @@ class MoodleScraper:
             except Exception as e:
                 print(f"→ 尋找登入連結時發生錯誤: {e}")
 
-            # 方式3: 直接尋找帳號輸入框（各種可能的選擇器）
+            # 方式3: 直接尋找帳號輸入框（包含 INCCU SSO 登入表單）
             username_field = None
             possible_selectors = [
+                # 標準 Moodle 欄位
                 (By.ID, "username"),
+                (By.NAME, "username"),
+                # Microsoft/Azure AD SSO (INCCU 可能使用)
                 (By.ID, "userNameInput"),
+                (By.ID, "i0116"),  # Microsoft 登入頁面
+                (By.NAME, "loginfmt"),  # Microsoft 帳號輸入
+                # 其他常見欄位
                 (By.ID, "user"),
                 (By.ID, "userid"),
                 (By.ID, "login"),
-                (By.NAME, "username"),
+                (By.ID, "account"),
                 (By.NAME, "UserName"),
+                (By.NAME, "user"),
+                (By.NAME, "account"),
+                # INCCU 相關欄位
+                (By.NAME, "uid"),  # INCCU 常用欄位
+                (By.NAME, "id"),
+                # 通用搜尋
                 (By.CSS_SELECTOR, "input[type='text'][name*='user']"),
                 (By.CSS_SELECTOR, "input[type='text'][id*='user']"),
+                (By.CSS_SELECTOR, "input[type='email']"),
                 (By.CSS_SELECTOR, "input[placeholder*='帳號']"),
                 (By.CSS_SELECTOR, "input[placeholder*='學號']"),
+                (By.CSS_SELECTOR, "input[placeholder*='Email']"),
             ]
             
             for by_method, selector in possible_selectors:
@@ -230,17 +277,25 @@ class MoodleScraper:
                     self.driver.save_screenshot("/tmp/moodle_username_error.png")
                     return False
 
-            # 尋找密碼輸入框
+            # 尋找密碼輸入框（包含 INCCU SSO）
             password_field = None
             password_selectors = [
+                # 標準欄位
                 (By.ID, "password"),
-                (By.ID, "passwordInput"),
-                (By.ID, "pass"),
-                (By.ID, "passwd"),
                 (By.NAME, "password"),
+                # Microsoft/Azure AD SSO
+                (By.ID, "passwordInput"),
+                (By.ID, "i0118"),  # Microsoft 密碼頁面
+                (By.NAME, "passwd"),
+                # 其他常見欄位
+                (By.ID, "pass"),
+                (By.ID, "pwd"),
                 (By.NAME, "Password"),
+                (By.NAME, "pwd"),
+                # 通用搜尋
                 (By.CSS_SELECTOR, "input[type='password']"),
                 (By.CSS_SELECTOR, "input[placeholder*='密碼']"),
+                (By.CSS_SELECTOR, "input[placeholder*='Password']"),
             ]
             
             for by_method, selector in password_selectors:
@@ -290,17 +345,26 @@ class MoodleScraper:
                     self.driver.save_screenshot("/tmp/moodle_password_error.png")
                     return False
 
-            # 尋找登入按鈕
+            # 尋找登入按鈕（包含 INCCU SSO）
             login_button = None
             button_selectors = [
+                # 標準按鈕
                 (By.ID, "loginbtn"),
                 (By.ID, "submitButton"),
                 (By.ID, "submit"),
                 (By.ID, "login"),
+                # Microsoft/Azure AD SSO
+                (By.ID, "idSIButton9"),  # Microsoft "Sign in" 按鈕
+                (By.ID, "idBtn_Back"),  # Microsoft 其他按鈕
+                # 其他常見按鈕
                 (By.NAME, "submitButton"),
+                (By.NAME, "submit"),
+                (By.NAME, "login"),
+                # 通用搜尋
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.XPATH, "//button[contains(., '登入')] | //button[contains(., 'Login')] | //button[contains(., '送出')]"),
+                (By.CSS_SELECTOR, "button.btn-primary"),
+                (By.XPATH, "//button[contains(., '登入')] | //button[contains(., 'Login')] | //button[contains(., '送出')] | //button[contains(., 'Sign in')] | //input[@value='登入'] | //input[@value='Login']"),
             ]
             
             for by_method, selector in button_selectors:
